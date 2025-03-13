@@ -1,0 +1,130 @@
+/* Custom styles for Student Monitoring System */
+
+.map-container {
+    height: 500px;
+    width: 100%;
+    border-radius: 5px;
+}
+
+.navbar-brand {
+    font-weight: bold;
+}
+
+.alert-container {
+    position: fixed;
+    top: 70px;
+    right: 20px;
+    z-index: 9999;
+}
+
+.footer {
+    margin-top: 50px;
+    padding: 20px 0;
+    background-color: #f8f9fa;
+    text-align: center;
+}
+
+.avatar {
+    width: 150px;
+    height: 150px;
+    border-radius: 50%;
+    margin-bottom: 20px;
+}
+
+.btn-tracking {
+    margin-top: 10px;
+    width: 100%;
+}
+
+.active-tracking {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0.7);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(40, 167, 69, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(40, 167, 69, 0);
+    }
+}
+
+.tracking-info {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-top: 15px;
+}
+
+.tracking-info p {
+    margin-bottom: 5px;
+}
+
+.tracking-badge {
+    font-size: 1rem;
+    padding: 8px 12px;
+}
+
+.history-item {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.history-item:hover {
+    background-color: #f0f0f0;
+}
+
+.connect-card {
+    transition: transform 0.3s ease;
+}
+
+.connect-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15) !important;
+}
+
+.request-list {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.user-info .user-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    margin-right: 15px;
+}
+
+.user-info .user-details {
+    flex: 1;
+}
+
+.user-info .user-name {
+    font-size: 1.2rem;
+    font-weight: bold;
+    margin-bottom: 5px;
+}
+
+.user-info .user-role {
+    color: #6c757d;
+}
+
+/* Mobile Responsiveness */
+@media (max-width: 768px) {
+    .map-container {
+        height: 350px;
+    }
+    
+    .card-body {
+        padding: 1rem;
+    }
+} 

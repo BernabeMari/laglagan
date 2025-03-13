@@ -1,0 +1,249 @@
+{% extends "base.html" %}
+
+{% block title %}Student Dashboard - Student Monitoring System{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-md-12">
+        <div class="card shadow mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">Student Dashboard</h4>
+                <div>
+                    {% if student.parent %}
+                    <span class="badge bg-success">Connected to parent: {{ student.parent.username }}</span>
+                    {% else %}
+                    <span class="badge bg-warning">Not connected to any parent</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                {% if not student.parent %}
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i> You are not connected to any parent. 
+                    <a href="{{ url_for('connect') }}" class="alert-link">Connect to a parent</a> to enable location tracking.
+                </div>
+                {% endif %}
+                
+                <div class="row">
+                    <div class="col-md-8">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Your Location</h5>
+                            </div>
+                            <div class="card-body">
+                                <div id="map" class="map-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Tracking Controls</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="d-grid gap-2">
+                                        <button id="start-tracking" class="btn btn-success btn-lg" {% if not student.parent %}disabled{% endif %}>
+                                            <i class="fas fa-play"></i> Start Tracking
+                                        </button>
+                                        <button id="stop-tracking" class="btn btn-danger btn-lg" disabled>
+                                            <i class="fas fa-stop"></i> Stop Tracking
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="alert alert-info">
+                                    <h5>Tracking Status: <span id="tracking-status">Not Active</span></h5>
+                                    <div id="location-info" class="mt-2">
+                                        <p>Latitude: <span id="lat">-</span></p>
+                                        <p>Longitude: <span id="lng">-</span></p>
+                                        <p>Last Updated: <span id="timestamp">-</span></p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if pending_requests %}
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h5 class="card-title mb-0">Connection Requests</h5>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-group">
+                                    {% for request in pending_requests %}
+                                    <li class="list-group-item">
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <div>
+                                                <strong>{{ request.from_parent.username }}</strong> wants to connect
+                                            </div>
+                                            <div>
+                                                <a href="{{ url_for('accept_request', request_id=request.id) }}" class="btn btn-sm btn-success">Accept</a>
+                                                <a href="{{ url_for('reject_request', request_id=request.id) }}" class="btn btn-sm btn-danger">Reject</a>
+                                            </div>
+                                        </div>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Initialize map
+    const map = L.map('map').setView([0, 0], 2);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+    }).addTo(map);
+    
+    let marker = null;
+    let trackingInterval = null;
+    let isTracking = false;
+    
+    // DOM elements
+    const startButton = document.getElementById('start-tracking');
+    const stopButton = document.getElementById('stop-tracking');
+    const trackingStatus = document.getElementById('tracking-status');
+    const latSpan = document.getElementById('lat');
+    const lngSpan = document.getElementById('lng');
+    const timestampSpan = document.getElementById('timestamp');
+    
+    // Start tracking
+    startButton.addEventListener('click', function() {
+        if (isTracking) return;
+        
+        // Start tracking
+        fetch('/api/start_tracking', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                isTracking = true;
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                trackingStatus.textContent = 'Active';
+                trackingStatus.classList.add('text-success');
+                
+                // Start sending location updates
+                startLocationUpdates();
+            }
+        })
+        .catch(error => {
+            console.error('Error starting tracking:', error);
+            alert('Error starting tracking. Please try again.');
+        });
+    });
+    
+    // Stop tracking
+    stopButton.addEventListener('click', function() {
+        if (!isTracking) return;
+        
+        // Stop tracking
+        fetch('/api/stop_tracking', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                stopLocationUpdates();
+            }
+        })
+        .catch(error => {
+            console.error('Error stopping tracking:', error);
+            alert('Error stopping tracking. Please try again.');
+        });
+    });
+    
+    // Function to start sending location updates
+    function startLocationUpdates() {
+        // First get current position
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                position => {
+                    updateLocation(position.coords.latitude, position.coords.longitude);
+                    
+                    // Set up interval to update location
+                    trackingInterval = setInterval(() => {
+                        navigator.geolocation.getCurrentPosition(
+                            position => {
+                                updateLocation(position.coords.latitude, position.coords.longitude);
+                            },
+                            error => {
+                                console.error('Error getting location:', error);
+                            }
+                        );
+                    }, 10000); // Update every 10 seconds
+                },
+                error => {
+                    console.error('Error getting location:', error);
+                    alert('Error getting your location. Please check your browser permissions.');
+                    stopLocationUpdates();
+                }
+            );
+        } else {
+            alert('Geolocation is not supported by this browser.');
+            stopLocationUpdates();
+        }
+    }
+    
+    // Function to stop location updates
+    function stopLocationUpdates() {
+        clearInterval(trackingInterval);
+        isTracking = false;
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        trackingStatus.textContent = 'Not Active';
+        trackingStatus.classList.remove('text-success');
+    }
+    
+    // Function to update location on the map and send to server
+    function updateLocation(latitude, longitude) {
+        // Update UI
+        latSpan.textContent = latitude.toFixed(6);
+        lngSpan.textContent = longitude.toFixed(6);
+        timestampSpan.textContent = new Date().toLocaleString();
+        
+        // Update map
+        if (marker) {
+            marker.setLatLng([latitude, longitude]);
+        } else {
+            marker = L.marker([latitude, longitude]).addTo(map);
+            map.setView([latitude, longitude], 15);
+        }
+        
+        // Send to server
+        fetch('/api/update_location', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                latitude: latitude,
+                longitude: longitude
+            }),
+        })
+        .then(response => response.json())
+        .catch(error => {
+            console.error('Error updating location:', error);
+        });
+    }
+</script>
+{% endblock %} 

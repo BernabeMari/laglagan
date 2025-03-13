@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Student Monitoring System{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-body text-center">
+                <h1 class="card-title mb-4">Welcome to Student Monitoring System</h1>
+                <p class="card-text">
+                    A real-time location tracking system for students and parents.
+                </p>
+                <div class="row mt-5">
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <h3 class="card-title"><i class="fas fa-user-graduate"></i> For Students</h3>
+                                <p class="card-text">Share your location with your parents for safety.</p>
+                                <a href="{{ url_for('signup') }}" class="btn btn-primary">Register as Student</a>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card mb-4">
+                            <div class="card-body">
+                                <h3 class="card-title"><i class="fas fa-user-tie"></i> For Parents</h3>
+                                <p class="card-text">Monitor your child's location in real-time.</p>
+                                <a href="{{ url_for('signup') }}" class="btn btn-success">Register as Parent</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-4">
+                    <h4>How It Works</h4>
+                    <div class="row mt-4">
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-user-plus fa-3x mb-3 text-primary"></i>
+                                    <h5 class="card-title">1. Create Account</h5>
+                                    <p class="card-text">Register as a student or parent.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-link fa-3x mb-3 text-primary"></i>
+                                    <h5 class="card-title">2. Connect Accounts</h5>
+                                    <p class="card-text">Link student and parent accounts together.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card h-100">
+                                <div class="card-body text-center">
+                                    <i class="fas fa-map-marker-alt fa-3x mb-3 text-primary"></i>
+                                    <h5 class="card-title">3. Start Tracking</h5>
+                                    <p class="card-text">Students share location, parents monitor.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 

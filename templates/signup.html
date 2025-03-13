@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}Sign Up - Student Monitoring System{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Sign Up</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="{{ url_for('signup') }}">
+                    <div class="mb-3">
+                        <label for="username" class="form-label">Username</label>
+                        <input type="text" class="form-control" id="username" name="username" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" class="form-control" id="email" name="email" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" class="form-control" id="password" name="password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="confirm_password" class="form-label">Confirm Password</label>
+                        <input type="password" class="form-control" id="confirm_password" name="confirm_password" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Account Type</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="user_type" id="student" value="student" checked>
+                            <label class="form-check-label" for="student">
+                                I am a Student
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="user_type" id="parent" value="parent">
+                            <label class="form-check-label" for="parent">
+                                I am a Parent
+                            </label>
+                        </div>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary">Sign Up</button>
+                    </div>
+                </form>
+            </div>
+            <div class="card-footer text-center">
+                Already have an account? <a href="{{ url_for('login') }}">Log In</a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Client-side validation
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.querySelector('form');
+        const password = document.getElementById('password');
+        const confirmPassword = document.getElementById('confirm_password');
+        
+        form.addEventListener('submit', function(event) {
+            if (password.value !== confirmPassword.value) {
+                event.preventDefault();
+                alert('Passwords do not match!');
+                return false;
+            }
+            
+            if (password.value.length < 6) {
+                event.preventDefault();
+                alert('Password must be at least 6 characters long!');
+                return false;
+            }
+            
+            return true;
+        });
+    });
+</script>
+{% endblock %} 

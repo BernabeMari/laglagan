@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+
+{% block title %}Connect Accounts - Student Monitoring System{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">Connect with {% if current_user.user_type == 'student' %}Parent{% else %}Student{% endif %}</h4>
+            </div>
+            <div class="card-body">
+                {% if current_user.user_type == 'student' and current_user.parent %}
+                    <div class="alert alert-success">
+                        <h5>You are already connected!</h5>
+                        <p>You are connected with parent: <strong>{{ current_user.parent.username }}</strong></p>
+                    </div>
+                {% elif current_user.user_type == 'parent' and current_user.student %}
+                    <div class="alert alert-success">
+                        <h5>You are already connected!</h5>
+                        <p>You are connected with student: <strong>{{ current_user.student.username }}</strong></p>
+                    </div>
+                {% else %}
+                    <p class="mb-4">
+                        {% if current_user.user_type == 'student' %}
+                            Enter your parent's email address to send a connection request.
+                        {% else %}
+                            Enter your child's email address to send a connection request.
+                        {% endif %}
+                    </p>
+                    <form method="POST" action="{{ url_for('connect') }}">
+                        <div class="mb-3">
+                            <label for="email" class="form-label">Email Address</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary">Send Connection Request</button>
+                        </div>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card shadow mt-4">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">Sent Connection Requests</h4>
+            </div>
+            <div class="card-body">
+                {% if current_user.sent_requests|length > 0 %}
+                    <ul class="list-group">
+                        {% for request in current_user.sent_requests %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ request.recipient.username }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ request.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                                </div>
+                                <span class="badge bg-{{ 'success' if request.status == 'accepted' else 'warning' if request.status == 'pending' else 'danger' }}">
+                                    {{ request.status|capitalize }}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">No connection requests sent.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
