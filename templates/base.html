@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="dark-mode">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -12,11 +12,13 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
     {% block head %}{% endblock %}
 </head>
-<body class="dark-theme">
+<body>
     <!-- Navigation -->
     <nav class="navbar navbar-expand-lg navbar-dark">
         <div class="container">
-            <a class="navbar-brand" href="/">Student Monitoring System</a>
+            <a class="navbar-brand" href="/">
+                <img src="{{ url_for('static', filename='icon.jpg') }}" alt="Logo" width="40" height="40">
+            </a>
             <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
                 <span class="navbar-toggler-icon"></span>
             </button>
@@ -71,7 +73,8 @@
     <!-- Footer -->
     <footer class="footer">
         <div class="container">
-            <span class="text-muted">© 2023 Student Monitoring System</span>
+            <span>© 2025 Student Monitoring System | Group 5 - Cocomelon</span>
+
         </div>
     </footer>
 
