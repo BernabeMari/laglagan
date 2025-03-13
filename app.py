@@ -7,10 +7,15 @@ from datetime import datetime
 import json
 from flask_socketio import SocketIO, emit
 import urllib.parse
+from functools import wraps
 
 # Initialize Flask app
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'default_secret_key')
+
+# Admin credentials
+ADMIN_USERNAME = 'zyber20'
+ADMIN_PASSWORD = 'Bernabe202003!'
 
 # MSSQL Connection
 params = urllib.parse.quote_plus("Driver={ODBC Driver 17 for SQL Server};"
@@ -512,7 +517,39 @@ def get_student_location(student_id):
         'student_id': student.student_id
     })
 
+@app.route('/admin/login', methods=['GET', 'POST'])
+def admin_login():
+    if request.method == 'POST':
+        username = request.form.get('username')
+        password = request.form.get('password')
+        
+        if username == ADMIN_USERNAME and password == ADMIN_PASSWORD:
+            # Set admin session
+            session['admin_logged_in'] = True
+            return redirect(url_for('admin_users'))
+        else:
+            flash('Invalid admin credentials')
+            
+    return render_template('admin_login.html')
+
+@app.route('/admin/logout')
+def admin_logout():
+    # Clear admin session
+    session.pop('admin_logged_in', None)
+    flash('Admin logged out successfully')
+    return redirect(url_for('admin_login'))
+
+# Admin middleware - function to check if admin is logged in
+def admin_required(view_func):
+    @wraps(view_func)
+    def decorated_view(*args, **kwargs):
+        if not session.get('admin_logged_in'):
+            return redirect(url_for('admin_login'))
+        return view_func(*args, **kwargs)
+    return decorated_view
+
 @app.route('/admin/users')
+@admin_required
 def admin_users():
     # Get all users
     all_users = User.query.all()
@@ -524,12 +561,22 @@ def admin_users():
             'id': user.id,
             'username': user.username,
             'email': user.email,
-            'password': user.password_hash,  # Updated to use password_hash
+            'full_name': user.full_name,
+            'password': user.password_hash,
             'user_type': user.user_type
         }
         users_data.append(user_data)
     
-    return render_template('admin_users.html', users=users_data)
+    return render_template('admin_users.html', users=users_data, ADMIN_USERNAME=ADMIN_USERNAME)
+
+# Admin routes
+@app.route('/admin')
+def admin_index():
+    # Redirect to admin users page if logged in, otherwise to login page
+    if session.get('admin_logged_in'):
+        return redirect(url_for('admin_users'))
+    else:
+        return redirect(url_for('admin_login'))
 
 # Initialize the database
 @app.cli.command('init-db')
