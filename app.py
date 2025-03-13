@@ -27,7 +27,18 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 login_manager = LoginManager(app)
 login_manager.login_view = 'login'
-socketio = SocketIO(app)
+
+# Initialize Socket.IO with CORS allowed
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
+
+# Connection event handlers for Socket.IO
+@socketio.on('connect')
+def handle_connect():
+    print("Client connected:", request.sid)
+    
+@socketio.on('disconnect')
+def handle_disconnect():
+    print("Client disconnected:", request.sid)
 
 # Base User class for authentication
 class User(db.Model, UserMixin):
@@ -35,7 +46,8 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)  # Binalik sa password_hash para tumugma sa database
+    full_name = db.Column(db.String(150), nullable=True)  # Added full_name field
+    password_hash = db.Column(db.String(128), nullable=False)
     user_type = db.Column(db.String(10), nullable=False)  # 'student' or 'parent'
     
     __mapper_args__ = {
@@ -141,6 +153,7 @@ def signup():
     if request.method == 'POST':
         username = request.form.get('username')
         email = request.form.get('email')
+        full_name = request.form.get('full_name')  # Get full_name from form
         password = request.form.get('password')
         user_type = request.form.get('user_type')
         
@@ -152,9 +165,9 @@ def signup():
         
         # Create new user based on type
         if user_type == 'student':
-            new_user = Student(username=username, email=email, user_type=user_type)
+            new_user = Student(username=username, email=email, full_name=full_name, user_type=user_type)
         else:
-            new_user = Parent(username=username, email=email, user_type=user_type)
+            new_user = Parent(username=username, email=email, full_name=full_name, user_type=user_type)
             
         new_user.set_password(password)
         
@@ -403,13 +416,24 @@ def update_location():
     
     # Emit to the connected parent
     if student.parent:
-        socketio.emit(f'location_update_{student.parent.user_id}', {
+        print(f"DEBUG: Emitting location update for student {student.username} (ID: {student.student_id}) to parent {student.parent.username} (ID: {student.parent.user_id})")
+        
+        event_name = f'location_update_{student.parent.user_id}'
+        data_to_emit = {
             'latitude': latitude,
             'longitude': longitude,
             'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
             'student_username': student.username,
+            'student_full_name': student.full_name,
             'student_id': student.student_id
-        })
+        }
+        
+        print(f"DEBUG: Event name: {event_name}")
+        print(f"DEBUG: Data to emit: {data_to_emit}")
+        
+        socketio.emit(event_name, data_to_emit)
+    else:
+        print(f"DEBUG: Student {student.username} has no connected parent, not emitting update")
     
     return jsonify({'status': 'success'})
 
@@ -432,12 +456,23 @@ def stop_tracking():
     
     # Notify the parent that tracking has stopped
     if student.parent:
-        socketio.emit(f'tracking_stopped_{student.parent.user_id}', {
+        print(f"DEBUG: Emitting tracking stopped for student {student.username} (ID: {student.student_id}) to parent {student.parent.username} (ID: {student.parent.user_id})")
+        
+        event_name = f'tracking_stopped_{student.parent.user_id}'
+        data_to_emit = {
             'message': 'Student has stopped tracking',
             'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
             'student_username': student.username,
+            'student_full_name': student.full_name,
             'student_id': student.student_id
-        })
+        }
+        
+        print(f"DEBUG: Event name: {event_name}")
+        print(f"DEBUG: Data to emit: {data_to_emit}")
+        
+        socketio.emit(event_name, data_to_emit)
+    else:
+        print(f"DEBUG: Student {student.username} has no connected parent, not emitting tracking stopped")
     
     return jsonify({'status': 'success', 'message': 'Tracking stopped'})
 
@@ -454,6 +489,7 @@ def get_student_location(student_id):
     # Check if the student is associated with this parent
     student = Student.query.filter_by(student_id=student_id, parent_id=parent.parent_id).first()
     if not student:
+        print(f"DEBUG: Parent {parent.username} (ID: {parent.parent_id}) attempted to get location for student ID {student_id} but they are not connected")
         return jsonify({'error': 'No student found with this ID or not connected to you'}), 404
         
     # Get the most recent active location update for the student
@@ -463,13 +499,16 @@ def get_student_location(student_id):
     ).order_by(LocationUpdate.timestamp.desc()).first()
     
     if not location:
+        print(f"DEBUG: No active location found for student {student.username} (ID: {student.student_id})")
         return jsonify({'error': 'No active location tracking for student'}), 404
-        
+    
+    print(f"DEBUG: Returning location for student {student.username} (ID: {student.student_id}) to parent {parent.username}")
     return jsonify({
         'latitude': location.latitude,
         'longitude': location.longitude,
         'timestamp': location.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
         'student_name': student.username,
+        'student_full_name': student.full_name,
         'student_id': student.student_id
     })
 

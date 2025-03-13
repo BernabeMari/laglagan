@@ -12,10 +12,23 @@
     <div class="col-md-12">
         <div class="card shadow mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Student Dashboard</h4>
+                <h4 class="mb-0">
+                    {% if student.full_name %}
+                        {{ student.full_name }}'s Dashboard
+                    {% else %}
+                        Student Dashboard
+                    {% endif %}
+                </h4>
                 <div>
                     {% if student.parent %}
-                    <span class="badge bg-success">Connected to parent: {{ student.parent.username }}</span>
+                    <span class="badge bg-success">
+                        Connected to parent: 
+                        {% if student.parent.full_name %}
+                            {{ student.parent.full_name }}
+                        {% else %}
+                            {{ student.parent.username }}
+                        {% endif %}
+                    </span>
                     {% else %}
                     <span class="badge bg-warning">Not connected to any parent</span>
                     {% endif %}
@@ -78,7 +91,14 @@
                                     <li class="list-group-item">
                                         <div class="d-flex justify-content-between align-items-center">
                                             <div>
-                                                <strong>{{ request.from_parent.username }}</strong> wants to connect
+                                                <strong>
+                                                    {% if request.from_parent.full_name %}
+                                                        {{ request.from_parent.full_name }}
+                                                    {% else %}
+                                                        {{ request.from_parent.username }}
+                                                    {% endif %}
+                                                </strong> 
+                                                wants to connect
                                             </div>
                                             <div>
                                                 <a href="{{ url_for('accept_request', request_id=request.id) }}" class="btn btn-sm btn-success">Accept</a>
@@ -119,6 +139,10 @@
     const lngSpan = document.getElementById('lng');
     const timestampSpan = document.getElementById('timestamp');
     
+    // Store student info
+    const studentId = '{{ student.student_id }}';
+    console.log(`Student ID: ${studentId}`);
+    
     // Start tracking
     startButton.addEventListener('click', function() {
         if (isTracking) return;
@@ -132,6 +156,7 @@
         })
         .then(response => response.json())
         .then(data => {
+            console.log("Start tracking response:", data);
             if (data.status === 'success') {
                 isTracking = true;
                 startButton.disabled = true;
@@ -162,6 +187,7 @@
         })
         .then(response => response.json())
         .then(data => {
+            console.log("Stop tracking response:", data);
             if (data.status === 'success') {
                 stopLocationUpdates();
             }
@@ -174,16 +200,20 @@
     
     // Function to start sending location updates
     function startLocationUpdates() {
+        console.log("Starting location updates...");
         // First get current position
         if (navigator.geolocation) {
             navigator.geolocation.getCurrentPosition(
                 position => {
+                    console.log("Initial position obtained:", position.coords);
                     updateLocation(position.coords.latitude, position.coords.longitude);
                     
                     // Set up interval to update location
                     trackingInterval = setInterval(() => {
+                        console.log("Getting updated position...");
                         navigator.geolocation.getCurrentPosition(
                             position => {
+                                console.log("New position obtained:", position.coords);
                                 updateLocation(position.coords.latitude, position.coords.longitude);
                             },
                             error => {
@@ -196,6 +226,11 @@
                     console.error('Error getting location:', error);
                     alert('Error getting your location. Please check your browser permissions.');
                     stopLocationUpdates();
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
                 }
             );
         } else {
@@ -206,6 +241,7 @@
     
     // Function to stop location updates
     function stopLocationUpdates() {
+        console.log("Stopping location updates...");
         clearInterval(trackingInterval);
         isTracking = false;
         startButton.disabled = false;
@@ -230,17 +266,24 @@
         }
         
         // Send to server
+        const locationData = {
+            latitude: latitude,
+            longitude: longitude
+        };
+        
+        console.log("Sending location data to server:", locationData);
+        
         fetch('/api/update_location', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify({
-                latitude: latitude,
-                longitude: longitude
-            }),
+            body: JSON.stringify(locationData),
         })
         .then(response => response.json())
+        .then(data => {
+            console.log("Location update response:", data);
+        })
         .catch(error => {
             console.error('Error updating location:', error);
         });

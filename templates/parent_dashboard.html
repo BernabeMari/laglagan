@@ -5,6 +5,7 @@
 {% block head %}
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.7.1/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.7.1/dist/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.1/socket.io.js"></script>
 {% endblock %}
 
 {% block content %}
@@ -12,7 +13,13 @@
     <div class="col-md-12">
         <div class="card shadow mb-4">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <h4 class="mb-0">Parent Dashboard</h4>
+                <h4 class="mb-0">
+                    {% if parent.full_name %}
+                        {{ parent.full_name }}'s Dashboard
+                    {% else %}
+                        Parent Dashboard
+                    {% endif %}
+                </h4>
                 <div>
                     {% if parent.students|length > 0 %}
                     <span class="badge bg-success">Connected to {{ parent.students|length }} student(s)</span>
@@ -45,7 +52,11 @@
                     <select id="student-selector" class="form-select">
                         {% for connected_student in parent.students %}
                         <option value="{{ connected_student.student_id }}" {% if student and student.student_id == connected_student.student_id %}selected{% endif %}>
-                            {{ connected_student.username }}
+                            {% if connected_student.full_name %}
+                                {{ connected_student.full_name }}
+                            {% else %}
+                                {{ connected_student.username }}
+                            {% endif %}
                         </option>
                         {% endfor %}
                     </select>
@@ -59,9 +70,13 @@
                             <div class="card-header">
                                 <h5 class="card-title mb-0">
                                     {% if student %}
-                                    {{ student.username }}'s Location
+                                        {% if student.full_name %}
+                                            {{ student.full_name }}'s Location
+                                        {% else %}
+                                            {{ student.username }}'s Location
+                                        {% endif %}
                                     {% else %}
-                                    Student Location
+                                        Student Location
                                     {% endif %}
                                 </h5>
                             </div>
@@ -77,12 +92,11 @@
                             </div>
                             <div class="card-body">
                                 <div class="alert alert-info">
-                                    <h5>Tracking Status: <span id="tracking-status">Not Active</span></h5>
-                                    <div id="location-info" class="mt-2">
-                                        <p>Student: <span id="student-name">{% if student %}{{ student.username }}{% else %}-{% endif %}</span></p>
-                                        <p>Latitude: <span id="lat">-</span></p>
-                                        <p>Longitude: <span id="lng">-</span></p>
-                                        <p>Last Updated: <span id="timestamp">-</span></p>
+                                    <div id="trackingStatus">
+                                        <span class="badge bg-warning">Waiting for student to start sharing location</span>
+                                    </div>
+                                    <div id="locationData" class="mt-2">
+                                        No active location data available
                                     </div>
                                 </div>
                                 <button id="refresh-location" class="btn btn-primary" {% if not student %}disabled{% endif %}>
@@ -96,11 +110,13 @@
                                 <h5 class="card-title mb-0">Tracking History</h5>
                             </div>
                             <div class="card-body">
-                                <div id="history-list" class="list-group">
-                                    <div class="text-center" id="no-history">
-                                        <p class="text-muted">No tracking history available.</p>
-                                    </div>
-                                </div>
+                                <table id="trackingHistory" class="table table-sm">
+                                    <tr>
+                                        <th>Student</th>
+                                        <th>Time</th>
+                                        <th>Coordinates</th>
+                                    </tr>
+                                </table>
                             </div>
                         </div>
                     </div>
@@ -114,7 +130,9 @@
 <div id="user-data" 
     data-has-student="{% if student %}true{% else %}false{% endif %}"
     data-user-id="{{ parent.user_id if parent else '' }}"
-    data-student-name="{% if student %}{{ student.username }}{% else %}{% endif %}">
+    data-student-name="{% if student %}
+        {% if student.full_name %}{{ student.full_name }}{% else %}{{ student.username }}{% endif %}
+    {% else %}{% endif %}">
 </div>
 {% endblock %}
 
@@ -127,18 +145,10 @@
     }).addTo(map);
     
     let marker = null;
-    let isTracking = false;
     let currentStudentId = null;
     
     // DOM elements
     const refreshButton = document.getElementById('refresh-location');
-    const trackingStatus = document.getElementById('tracking-status');
-    const latSpan = document.getElementById('lat');
-    const lngSpan = document.getElementById('lng');
-    const timestampSpan = document.getElementById('timestamp');
-    const studentNameSpan = document.getElementById('student-name');
-    const historyList = document.getElementById('history-list');
-    const noHistory = document.getElementById('no-history');
     const userData = document.getElementById('user-data');
     const studentSelector = document.getElementById('student-selector');
     
@@ -149,12 +159,16 @@
     // Initialize with the first student if available
     if (hasStudent && studentSelector) {
         currentStudentId = studentSelector.value;
+    } else if (hasStudent) {
+        // If there's only one student (no selector)
+        currentStudentId = "{{ student.student_id if student else '' }}";
     }
     
     // Handle student selection change
     if (studentSelector) {
         studentSelector.addEventListener('change', function() {
             currentStudentId = this.value;
+            console.log("Selected student ID: " + currentStudentId);
             
             // Clear map and history
             if (marker) {
@@ -164,14 +178,10 @@
             
             clearHistory();
             
-            // Reset tracking status and info
-            isTracking = false;
-            trackingStatus.textContent = 'Not Active';
-            trackingStatus.classList.remove('text-success');
-            latSpan.textContent = '-';
-            lngSpan.textContent = '-';
-            timestampSpan.textContent = '-';
-            studentNameSpan.textContent = this.options[this.selectedIndex].text;
+            // Reset tracking status
+            document.getElementById('trackingStatus').innerHTML = 
+                `<span class="badge bg-warning">Waiting for student to start sharing location</span>`;
+            document.getElementById('locationData').innerHTML = 'No active location data available';
             
             // Fetch location for the selected student
             fetchStudentLocation(currentStudentId);
@@ -179,31 +189,36 @@
     }
     
     // Socket.IO connection
+    let socket;
     if (hasStudent) {
-        const socket = io();
+        // Create the Socket.IO connection
+        socket = io();
+        console.log("Socket.IO initialized for user ID: " + userId);
         
         // Listen for location updates from any connected student
         socket.on(`location_update_${userId}`, function(data) {
-            // Update the tracking status
-            isTracking = true;
-            trackingStatus.textContent = 'Active';
-            trackingStatus.classList.add('text-success');
-            
-            // Update the location information
-            updateLocationDisplay(data.latitude, data.longitude, data.timestamp, data.student_username);
-            
-            // Add to history
-            addToHistory(data.latitude, data.longitude, data.timestamp, data.student_username);
+            console.log("Received location update:", data);
+            if (data.student_id == currentStudentId) {
+                updateLocationDisplay(
+                    data.latitude, 
+                    data.longitude, 
+                    data.timestamp, 
+                    data.student_username,
+                    data.student_full_name
+                );
+                
+                document.getElementById('trackingStatus').innerHTML = 
+                    `<span class="badge bg-success">Actively Tracking ${data.student_full_name || data.student_username}</span>`;
+            }
         });
         
-        // Listen for tracking stopped notifications
+        // Listen for tracking stopped events
         socket.on(`tracking_stopped_${userId}`, function(data) {
-            isTracking = false;
-            trackingStatus.textContent = 'Not Active';
-            trackingStatus.classList.remove('text-success');
-            
-            // Show notification
-            alert(`Student ${data.student_username} has stopped sharing their location.`);
+            console.log("Received tracking stopped:", data);
+            if (data.student_id == currentStudentId) {
+                document.getElementById('trackingStatus').innerHTML = 
+                    `<span class="badge bg-warning">${data.student_full_name || data.student_username} has stopped sharing location</span>`;
+            }
         });
     }
     
@@ -217,98 +232,88 @@
     // Fetch the student's location on page load
     document.addEventListener('DOMContentLoaded', function() {
         if (hasStudent && currentStudentId) {
+            console.log("Fetching initial location for student ID: " + currentStudentId);
             fetchStudentLocation(currentStudentId);
         }
     });
     
     // Function to fetch the student's location
     function fetchStudentLocation(studentId) {
+        console.log("Fetching location for student ID: " + studentId);
         fetch(`/api/get_student_location/${studentId}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('No active tracking session');
-                }
-                return response.json();
-            })
+            .then(response => response.json())
             .then(data => {
-                // Update the tracking status
-                isTracking = true;
-                trackingStatus.textContent = 'Active';
-                trackingStatus.classList.add('text-success');
-                
-                // Update the location information
-                updateLocationDisplay(data.latitude, data.longitude, data.timestamp, data.student_name);
-                
-                // Add to history if not already there
-                addToHistory(data.latitude, data.longitude, data.timestamp, data.student_name);
+                console.log("Location data received:", data);
+                if (data.error) {
+                    document.getElementById('trackingStatus').innerHTML = 
+                        `<span class="badge bg-warning">No active location for selected student</span>`;
+                    document.getElementById('locationData').innerHTML = 'No active location data';
+                    if (marker) {
+                        map.removeLayer(marker);
+                    }
+                } else {
+                    updateLocationDisplay(
+                        data.latitude, 
+                        data.longitude, 
+                        data.timestamp, 
+                        data.student_name,
+                        data.student_full_name
+                    );
+                    document.getElementById('trackingStatus').innerHTML = 
+                        `<span class="badge bg-success">Actively Tracking ${data.student_full_name || data.student_name}</span>`;
+                }
             })
             .catch(error => {
                 console.error('Error fetching location:', error);
-                isTracking = false;
-                trackingStatus.textContent = 'Not Active';
-                trackingStatus.classList.remove('text-success');
+                document.getElementById('trackingStatus').innerHTML = 
+                    `<span class="badge bg-danger">Error fetching location</span>`;
             });
     }
     
     // Function to update the location display
-    function updateLocationDisplay(latitude, longitude, timestamp, studentName) {
-        latSpan.textContent = latitude.toFixed(6);
-        lngSpan.textContent = longitude.toFixed(6);
-        timestampSpan.textContent = timestamp;
+    function updateLocationDisplay(latitude, longitude, timestamp, studentName, studentFullName) {
+        document.getElementById('locationData').innerHTML = `
+            <strong>Student:</strong> ${studentFullName || studentName}<br>
+            <strong>Last Update:</strong> ${timestamp}<br>
+            <strong>Coordinates:</strong> ${latitude}, ${longitude}
+        `;
         
-        if (studentName) {
-            studentNameSpan.textContent = studentName;
-        }
-        
-        // Update map
+        // Update map marker
         if (marker) {
-            marker.setLatLng([latitude, longitude]);
-        } else {
-            marker = L.marker([latitude, longitude]).addTo(map);
-            map.setView([latitude, longitude], 15);
+            map.removeLayer(marker);
         }
+        
+        marker = L.marker([latitude, longitude]).addTo(map);
+        map.setView([latitude, longitude], 16);
+        
+        // Add to history
+        addToHistory(latitude, longitude, timestamp, studentName, studentFullName);
     }
     
     // Function to clear history
     function clearHistory() {
-        while (historyList.firstChild) {
-            if (historyList.firstChild.id === "no-history") {
-                break;
-            }
-            historyList.removeChild(historyList.firstChild);
-        }
-        noHistory.style.display = 'block';
+        const historyTable = document.getElementById('trackingHistory');
+        historyTable.innerHTML = `
+            <tr>
+                <th>Student</th>
+                <th>Time</th>
+                <th>Coordinates</th>
+            </tr>
+        `;
     }
     
     // Function to add a location to the history
-    function addToHistory(latitude, longitude, timestamp, studentName) {
-        // Hide the "no history" message
-        noHistory.style.display = 'none';
+    function addToHistory(latitude, longitude, timestamp, studentName, studentFullName) {
+        const historyTable = document.getElementById('trackingHistory');
+        const newRow = historyTable.insertRow(1); // Insert after header
         
-        // Create a new history item
-        const historyItem = document.createElement('a');
-        historyItem.className = 'list-group-item list-group-item-action';
-        historyItem.innerHTML = `
-            <div class="d-flex w-100 justify-content-between">
-                <h6 class="mb-1">${studentName || 'Student'} Location Update</h6>
-                <small>${timestamp}</small>
-            </div>
-            <p class="mb-1">Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}</p>
-        `;
+        const nameCell = newRow.insertCell(0);
+        const timeCell = newRow.insertCell(1);
+        const coordCell = newRow.insertCell(2);
         
-        // Add click event to center map on this location
-        historyItem.addEventListener('click', function() {
-            map.setView([latitude, longitude], 15);
-            marker.setLatLng([latitude, longitude]);
-        });
-        
-        // Add to the list
-        historyList.insertBefore(historyItem, historyList.firstChild);
-        
-        // Limit history to 10 items
-        if (historyList.children.length > 11) { // +1 for the noHistory element
-            historyList.removeChild(historyList.lastChild);
-        }
+        nameCell.textContent = studentFullName || studentName;
+        timeCell.textContent = timestamp;
+        coordCell.textContent = `${latitude}, ${longitude}`;
     }
 </script>
 {% endblock %} 

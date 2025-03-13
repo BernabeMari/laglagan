@@ -14,7 +14,15 @@
                     <div class="alert alert-info">
                         <h5>Connection Information</h5>
                         {% if student.parent %}
-                            <p>You are connected with parent: <strong>{{ student.parent.username }}</strong></p>
+                            <p>You are connected with parent: 
+                                <strong>
+                                    {% if student.parent.full_name %}
+                                        {{ student.parent.full_name }}
+                                    {% else %}
+                                        {{ student.parent.username }}
+                                    {% endif %}
+                                </strong>
+                            </p>
                         {% else %}
                             <p>You can only receive connection requests from parents. Wait for your parent to send you a connection request.</p>
                         {% endif %}
@@ -47,7 +55,13 @@
                         {% for student in parent.students %}
                             <li class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
-                                    <strong>{{ student.username }}</strong>
+                                    <strong>
+                                        {% if student.full_name %}
+                                            {{ student.full_name }}
+                                        {% else %}
+                                            {{ student.username }}
+                                        {% endif %}
+                                    </strong>
                                     <br>
                                     <small class="text-muted">{{ student.email }}</small>
                                 </div>
@@ -71,7 +85,13 @@
                         {% for request in sent_requests %}
                             <li class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
-                                    <strong>{{ request.to_student.username }}</strong>
+                                    <strong>
+                                        {% if request.to_student.full_name %}
+                                            {{ request.to_student.full_name }}
+                                        {% else %}
+                                            {{ request.to_student.username }}
+                                        {% endif %}
+                                    </strong>
                                     <br>
                                     <small class="text-muted">{{ request.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
                                 </div>
