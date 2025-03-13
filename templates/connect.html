@@ -7,30 +7,25 @@
     <div class="col-md-6">
         <div class="card shadow">
             <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">Connect with {% if current_user.user_type == 'student' %}Parent{% else %}Student{% endif %}</h4>
+                <h4 class="mb-0">Connect with Student</h4>
             </div>
             <div class="card-body">
-                {% if current_user.user_type == 'student' and current_user.parent %}
-                    <div class="alert alert-success">
-                        <h5>You are already connected!</h5>
-                        <p>You are connected with parent: <strong>{{ current_user.parent.username }}</strong></p>
-                    </div>
-                {% elif current_user.user_type == 'parent' and current_user.student %}
-                    <div class="alert alert-success">
-                        <h5>You are already connected!</h5>
-                        <p>You are connected with student: <strong>{{ current_user.student.username }}</strong></p>
+                {% if current_user.user_type == 'student' %}
+                    <div class="alert alert-info">
+                        <h5>Connection Information</h5>
+                        {% if student.parent %}
+                            <p>You are connected with parent: <strong>{{ student.parent.username }}</strong></p>
+                        {% else %}
+                            <p>You can only receive connection requests from parents. Wait for your parent to send you a connection request.</p>
+                        {% endif %}
                     </div>
                 {% else %}
                     <p class="mb-4">
-                        {% if current_user.user_type == 'student' %}
-                            Enter your parent's email address to send a connection request.
-                        {% else %}
-                            Enter your child's email address to send a connection request.
-                        {% endif %}
+                        Enter your child's email address to send a connection request.
                     </p>
                     <form method="POST" action="{{ url_for('connect') }}">
                         <div class="mb-3">
-                            <label for="email" class="form-label">Email Address</label>
+                            <label for="email" class="form-label">Student's Email Address</label>
                             <input type="email" class="form-control" id="email" name="email" required>
                         </div>
                         <div class="d-grid">
@@ -41,17 +36,42 @@
             </div>
         </div>
         
+        {% if current_user.user_type == 'parent' %}
         <div class="card shadow mt-4">
             <div class="card-header bg-info text-white">
-                <h4 class="mb-0">Sent Connection Requests</h4>
+                <h4 class="mb-0">Connected Students</h4>
             </div>
             <div class="card-body">
-                {% if current_user.sent_requests|length > 0 %}
+                {% if parent.students|length > 0 %}
                     <ul class="list-group">
-                        {% for request in current_user.sent_requests %}
+                        {% for student in parent.students %}
                             <li class="list-group-item d-flex justify-content-between align-items-center">
                                 <div>
-                                    <strong>{{ request.recipient.username }}</strong>
+                                    <strong>{{ student.username }}</strong>
+                                    <br>
+                                    <small class="text-muted">{{ student.email }}</small>
+                                </div>
+                                <span class="badge bg-success">Connected</span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+                {% else %}
+                    <p class="text-muted">No students connected yet.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div class="card shadow mt-4">
+            <div class="card-header bg-warning text-white">
+                <h4 class="mb-0">Pending Requests</h4>
+            </div>
+            <div class="card-body">
+                {% if sent_requests|length > 0 %}
+                    <ul class="list-group">
+                        {% for request in sent_requests %}
+                            <li class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>{{ request.to_student.username }}</strong>
                                     <br>
                                     <small class="text-muted">{{ request.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
                                 </div>
@@ -62,10 +82,11 @@
                         {% endfor %}
                     </ul>
                 {% else %}
-                    <p class="text-muted">No connection requests sent.</p>
+                    <p class="text-muted">No pending connection requests.</p>
                 {% endif %}
             </div>
         </div>
+        {% endif %}
     </div>
 </div>
 {% endblock %} 

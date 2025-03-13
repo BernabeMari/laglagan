@@ -35,7 +35,7 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
+    password_hash = db.Column(db.String(128), nullable=False)  # Binalik sa password_hash para tumugma sa database
     user_type = db.Column(db.String(10), nullable=False)  # 'student' or 'parent'
     
     __mapper_args__ = {
@@ -44,10 +44,12 @@ class User(db.Model, UserMixin):
     }
     
     def set_password(self, password):
-        self.password_hash = generate_password_hash(password)
+        # Store plain password directly instead of hashing
+        self.password_hash = password
         
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        # Direct comparison instead of hash checking
+        return self.password_hash == password
 
 # Parent model (needs to be defined before Student due to dependency)
 class Parent(User):
@@ -225,8 +227,11 @@ def parent_dashboard():
         flash('Parent account not found. Please contact support.')
         return redirect(url_for('index'))
     
-    # Get the student associated with this parent
-    student = get_student_for_parent(parent)
+    # Get all students associated with this parent
+    students = Student.query.filter_by(parent_id=parent.parent_id).all()
+    
+    # Get the first student for initial view, or None if no students
+    student = students[0] if students else None
         
     return render_template('parent_dashboard.html',
                           parent=parent,
@@ -235,137 +240,118 @@ def parent_dashboard():
 @app.route('/connect', methods=['GET', 'POST'])
 @login_required
 def connect():
+    # Students can't send connection requests, they can only view their connection status
+    if current_user.user_type == 'student':
+        student = get_student(current_user)
+        return render_template('connect.html', student=student)
+    
+    # Get parent
+    parent = get_parent(current_user)
+    if not parent:
+        flash('Parent account not found.')
+        return redirect(url_for('index'))
+    
+    # Get sent requests
+    sent_requests = ConnectionRequest.query.filter_by(
+        from_parent_id=parent.parent_id,
+        status='pending'
+    ).all()
+    
     if request.method == 'POST':
         email = request.form.get('email')
         target_user = User.query.filter_by(email=email).first()
         
         if not target_user:
-            flash('User not found')
+            flash('Student with this email not found')
             return redirect(url_for('connect'))
             
-        # Check if user types are compatible (student to parent or parent to student)
-        if (current_user.user_type == 'student' and target_user.user_type != 'parent') or \
-           (current_user.user_type == 'parent' and target_user.user_type != 'student'):
-            flash('You can only connect with users of the opposite type')
+        # Check if user is a student
+        if target_user.user_type != 'student':
+            flash('You can only connect with student accounts')
             return redirect(url_for('connect'))
         
-        # Get proper objects
-        if current_user.user_type == 'student':
-            student = get_student(current_user)
-            parent = Parent.query.filter_by(user_id=target_user.id).first()
-            
-            # Check if connection request already exists
-            existing_request = ConnectionRequest.query.filter_by(
-                from_student_id=student.student_id,
-                to_parent_id=parent.parent_id,
-                status='pending'
-            ).first()
-            
-            if existing_request:
-                flash('A connection request has already been sent to this parent')
-                return redirect(url_for('connect'))
-                
-            # Create new connection request
-            connection_request = ConnectionRequest(
-                from_student_id=student.student_id,
-                to_parent_id=parent.parent_id
-            )
-        else:  # Parent
-            parent = get_parent(current_user)
-            student = Student.query.filter_by(user_id=target_user.id).first()
-            
-            # Check if connection request already exists
-            existing_request = ConnectionRequest.query.filter_by(
-                from_parent_id=parent.parent_id,
-                to_student_id=student.student_id,
-                status='pending'
-            ).first()
-            
-            if existing_request:
-                flash('A connection request has already been sent to this student')
-                return redirect(url_for('connect'))
-                
-            # Create new connection request
-            connection_request = ConnectionRequest(
-                from_parent_id=parent.parent_id,
-                to_student_id=student.student_id
-            )
+        # Get student object
+        student = Student.query.filter_by(user_id=target_user.id).first()
         
+        # Check if already connected
+        if student in parent.students:
+            flash('You are already connected to this student')
+            return redirect(url_for('connect'))
+        
+        # Check if connection request already exists
+        existing_request = ConnectionRequest.query.filter_by(
+            from_parent_id=parent.parent_id,
+            to_student_id=student.student_id,
+            status='pending'
+        ).first()
+        
+        if existing_request:
+            flash('A connection request has already been sent to this student')
+            return redirect(url_for('connect'))
+            
+        # Create new connection request
+        connection_request = ConnectionRequest(
+            from_parent_id=parent.parent_id,
+            to_student_id=student.student_id
+        )
+    
         db.session.add(connection_request)
         db.session.commit()
         
-        flash('Connection request sent')
-        
-        if current_user.user_type == 'student':
-            return redirect(url_for('student_dashboard'))
-        else:
-            return redirect(url_for('parent_dashboard'))
-            
-    return render_template('connect.html')
+        flash('Connection request sent to the student')
+        return redirect(url_for('connect'))
+    
+    return render_template('connect.html', parent=parent, sent_requests=sent_requests)
 
 @app.route('/accept_request/<int:request_id>')
 @login_required
 def accept_request(request_id):
+    # Only students can accept connection requests
+    if current_user.user_type != 'student':
+        flash('Only students can accept connection requests')
+        return redirect(url_for('connect'))
+    
+    student = get_student(current_user)
     connection_request = ConnectionRequest.query.get_or_404(request_id)
     
-    # Get proper objects based on user type
-    if current_user.user_type == 'student':
-        student = get_student(current_user)
+    # Ensure the request is directed to the current student
+    if connection_request.to_student_id != student.student_id:
+        flash('Invalid request')
+        return redirect(url_for('student_dashboard'))
         
-        # Ensure the request is directed to the current student
-        if connection_request.to_student_id != student.student_id:
-            flash('Invalid request')
-            return redirect(url_for('student_dashboard'))
-            
-        # Update the connection request status
-        connection_request.status = 'accepted'
-        
-        # Establish the connection between student and parent
-        student.parent_id = connection_request.from_parent_id
-        
-    else:  # Parent
-        parent = get_parent(current_user)
-        
-        # Ensure the request is directed to the current parent
-        if connection_request.to_parent_id != parent.parent_id:
-            flash('Invalid request')
-            return redirect(url_for('parent_dashboard'))
-            
-        # Update the connection request status
-        connection_request.status = 'accepted'
-        
-        # Establish the connection between student and parent
-        student = Student.query.get(connection_request.from_student_id)
-        student.parent_id = parent.parent_id
+    # Update the connection request status
+    connection_request.status = 'accepted'
+    
+    # Establish the connection between student and parent
+    student.parent_id = connection_request.from_parent_id
     
     db.session.commit()
     
-    flash('Connection request accepted')
-    return redirect(url_for('student_dashboard' if current_user.user_type == 'student' else 'parent_dashboard'))
+    flash('Connection request accepted. You are now connected with the parent.')
+    return redirect(url_for('student_dashboard'))
 
 @app.route('/reject_request/<int:request_id>')
 @login_required
 def reject_request(request_id):
+    # Only students can reject connection requests
+    if current_user.user_type != 'student':
+        flash('Only students can reject connection requests')
+        return redirect(url_for('connect'))
+    
+    student = get_student(current_user)
     connection_request = ConnectionRequest.query.get_or_404(request_id)
     
-    # Ensure the request is directed to the current user
-    if current_user.user_type == 'student':
-        student = get_student(current_user)
-        if connection_request.to_student_id != student.student_id:
-            flash('Invalid request')
-            return redirect(url_for('student_dashboard'))
-    else:  # Parent
-        parent = get_parent(current_user)
-        if connection_request.to_parent_id != parent.parent_id:
-            flash('Invalid request')
-            return redirect(url_for('parent_dashboard'))
+    # Ensure the request is directed to the current student
+    if connection_request.to_student_id != student.student_id:
+        flash('Invalid request')
+        return redirect(url_for('student_dashboard'))
     
     # Update the connection request status
     connection_request.status = 'rejected'
     db.session.commit()
     
     flash('Connection request rejected')
-    return redirect(url_for('student_dashboard' if current_user.user_type == 'student' else 'parent_dashboard'))
+    return redirect(url_for('student_dashboard'))
 
 # API routes for location tracking
 @app.route('/api/start_tracking', methods=['POST'])
@@ -420,7 +406,9 @@ def update_location():
         socketio.emit(f'location_update_{student.parent.user_id}', {
             'latitude': latitude,
             'longitude': longitude,
-            'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'student_username': student.username,
+            'student_id': student.student_id
         })
     
     return jsonify({'status': 'success'})
@@ -446,14 +434,16 @@ def stop_tracking():
     if student.parent:
         socketio.emit(f'tracking_stopped_{student.parent.user_id}', {
             'message': 'Student has stopped tracking',
-            'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S')
+            'timestamp': datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S'),
+            'student_username': student.username,
+            'student_id': student.student_id
         })
     
     return jsonify({'status': 'success', 'message': 'Tracking stopped'})
 
-@app.route('/api/get_student_location')
+@app.route('/api/get_student_location/<int:student_id>')
 @login_required
-def get_student_location():
+def get_student_location(student_id):
     if current_user.user_type != 'parent':
         return jsonify({'error': 'Only parents can view student locations'}), 403
         
@@ -461,10 +451,10 @@ def get_student_location():
     if not parent:
         return jsonify({'error': 'Parent account not found'}), 404
         
-    # Get the student associated with this parent
-    student = get_student_for_parent(parent)
+    # Check if the student is associated with this parent
+    student = Student.query.filter_by(student_id=student_id, parent_id=parent.parent_id).first()
     if not student:
-        return jsonify({'error': 'No student connected to this parent'}), 404
+        return jsonify({'error': 'No student found with this ID or not connected to you'}), 404
         
     # Get the most recent active location update for the student
     location = LocationUpdate.query.filter_by(
@@ -479,8 +469,28 @@ def get_student_location():
         'latitude': location.latitude,
         'longitude': location.longitude,
         'timestamp': location.timestamp.strftime('%Y-%m-%d %H:%M:%S'),
-        'student_name': student.username
+        'student_name': student.username,
+        'student_id': student.student_id
     })
+
+@app.route('/admin/users')
+def admin_users():
+    # Get all users
+    all_users = User.query.all()
+    
+    # Prepare user data for display
+    users_data = []
+    for user in all_users:
+        user_data = {
+            'id': user.id,
+            'username': user.username,
+            'email': user.email,
+            'password': user.password_hash,  # Updated to use password_hash
+            'user_type': user.user_type
+        }
+        users_data.append(user_data)
+    
+    return render_template('admin_users.html', users=users_data)
 
 # Initialize the database
 @app.cli.command('init-db')

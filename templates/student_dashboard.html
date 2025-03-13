@@ -23,9 +23,9 @@
             </div>
             <div class="card-body">
                 {% if not student.parent %}
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle"></i> You are not connected to any parent. 
-                    <a href="{{ url_for('connect') }}" class="alert-link">Connect to a parent</a> to enable location tracking.
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> You are not connected to any parent yet. 
+                    Wait for a parent to send you a connection request. When a parent sends you a request, it will appear below in the Connection Requests section.
                 </div>
                 {% endif %}
                 
